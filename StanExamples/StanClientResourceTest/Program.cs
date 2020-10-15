@@ -25,30 +25,33 @@ namespace StanClientResourceTest
             {
                 var nopts = ConnectionFactory.GetDefaultOptions();
                 nopts.Url = url;
+                nopts.Name = clientID;
 
                 nopts.DisconnectedEventHandler = (obj, args) =>
                 {
-                    Log("({0}) Disconnected from NATS", clientID);
+                    Log("({0}) Disconnected from NATS.", clientID);
                 };
 
                 nopts.ReconnectedEventHandler = (obj, args) =>
                 {
-                    Log("({0})Reconnected to NATS.", clientID);
+                    Log("({0}) Reconnected to NATS.", clientID);
                 };
                 nopts.AsyncErrorEventHandler = (obj, args) =>
                 {
-                    Log("({0}) AsyncError: {1}", clientID, args.Error);
+                    Log("({0}) AsyncError: {1}.", clientID, args.Error);
                 };
 
-                var opts = StanOptions.GetDefaultOptions();
-                opts.ConnectionLostEventHandler = (obj, args) =>
+                var sopts = StanOptions.GetDefaultOptions();
+                sopts.ConnectionLostEventHandler = (obj, args) =>
                 {
                     Log("({0} STAN Connection lost.  Exiting.", clientID);
                     Environment.Exit(1);
                 };
 
-                var stanOptions = StanOptions.GetDefaultOptions();
-                var sc = new StanConnectionFactory().CreateConnection(clusterID, clientID, opts);
+                sopts.PubAckWait = 10000;
+                sopts.MaxPubAcksInFlight = 32;
+                sopts.NatsConn = new ConnectionFactory().CreateConnection(nopts);
+                var sc = new StanConnectionFactory().CreateConnection(clusterID, clientID, sopts);
 
                 return sc;
             }
@@ -89,7 +92,7 @@ namespace StanClientResourceTest
                     counter++;
                     if (counter % 500 == 0)
                     {
-                        Log("Subscriber Received {0} msgs at {1} msgs/sec.", counter, counter / sw.Elapsed.TotalSeconds);
+                        Log("Subscriber Received {0} msgs at {1:0} msgs/sec.", counter, counter / sw.Elapsed.TotalSeconds);
                     }
                 }
 
@@ -98,15 +101,15 @@ namespace StanClientResourceTest
                     IStanConnection sc = null;
                     try
                     {
-                        sc = CreateConnection(url, clusterID, "synadia-rel-subscriber");
+                        sc = CreateConnection(url, clusterID, "synadia-rel-sub");
 
                         var opts = StanSubscriptionOptions.GetDefaultOptions();
                         opts.AckWait = 60000;
                         opts.ManualAcks = true;
                         opts.MaxInflight = 32;
-                        opts.DurableName = "worker";
+                        opts.DurableName = "synadia-restest";
 
-                        sc.Subscribe("foo", "qg", opts, ProcessMsg);
+                        sc.Subscribe("synadia.restest", "qg", opts, ProcessMsg);
 
                         FeV.WaitOne();
                     }
@@ -141,7 +144,8 @@ namespace StanClientResourceTest
                 {
                     var Elapsed = ResourceSw.Elapsed.TotalMilliseconds;
 
-                    if (Elapsed == 0)
+                    // print every three seconds
+                    if (Elapsed < 3000)
                         return;
 
                     var DeltaCpuTime = (Proc.TotalProcessorTime - PrevCpuTime).TotalMilliseconds;
@@ -173,7 +177,9 @@ namespace StanClientResourceTest
                     {
                         try
                         {
-                            sc.Publish("foo", payload);
+                            sc.Publish("synadia.restest", payload, (obj, args) => { /* NOOP */ });
+                            // sync publish for long running stability
+                            // sc.Publish("synadia.restest", payload); ;
                         }
                         catch (Exception e)
                         {
@@ -181,7 +187,7 @@ namespace StanClientResourceTest
                             Thread.Sleep(250);
                         }
 
-                        if (i % 100 == 0)
+                        if (i % 500 == 0)
                         {
                             Log("Publisher Sent {0} messages to the streaming server.", i);
                             PrintResourceStats();
@@ -213,6 +219,10 @@ namespace StanClientResourceTest
                 if (args.Length > 0) url = args[0];
                 if (args.Length > 1) clusterID = args[1];
 
+                Log("==== STAN Client Resource Test ====");
+                Log("Using Url: " + url);
+                Log("Using ClusterID: " + clusterID);
+
                 Publisher p = new Publisher();
                 Subscriber s = new Subscriber();
 
@@ -230,12 +240,14 @@ namespace StanClientResourceTest
                 try
                 {
                     Log("Starting Subscriber.");
-                    Task subTask = Task.Run(() => s.ProcessMsgs(url, clusterID));
+                    Task subTask = new Task(() => s.ProcessMsgs(url, clusterID), TaskCreationOptions.LongRunning);
+                    subTask.Start();
 
                     Thread.Sleep(1000);
 
-                    Log("Starting Publisher.");
-                    Task pubTask = Task.Run(() => p.SendMessages(url, clusterID));
+                    Log("Starting Publishers.");
+                    Task pubTask = new Task(() => p.SendMessages(url, clusterID), TaskCreationOptions.LongRunning);
+                    pubTask.Start();
 
                     pubTask.Wait();
                     subTask.Wait();

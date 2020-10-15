@@ -5,16 +5,16 @@ WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1-buster AS build
 WORKDIR /src
-COPY StanPublisher/StanReliabilityTest.csproj StanPublisher/
-RUN dotnet restore "StanPublisher/StanReliabilityTest.csproj"
+COPY StanClientResourceTest.csproj .
+RUN dotnet restore "StanClientResourceTest.csproj"
 COPY . .
-WORKDIR "/src/StanPublisher"
-RUN dotnet build "StanReliabilityTest.csproj" -c Release -o /app/build
+WORKDIR "/src/StanClientResourceTest"
+RUN dotnet build "/src/StanClientResourceTest.csproj" -c Release -o /app/build
 
 FROM build AS publish
-RUN dotnet publish "StanReliabilityTest.csproj" -c Release -o /app/publish
+RUN dotnet publish "/src/StanClientResourceTest.csproj" -c Release -o /app/publish
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "StanReliabilityTest.dll"]
+ENTRYPOINT ["dotnet", "StanClientResourceTest.dll"]
