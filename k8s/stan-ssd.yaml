@@ -99,7 +99,7 @@ spec:
           value: $(POD_NAME).stan.$(POD_NAMESPACE).svc
         - name: STAN_SERVICE_NAME
           value: stan
-        image: nats-streaming:alpine
+        image: nats-streaming:0.17.0
         imagePullPolicy: IfNotPresent
         name: stan
         ports:
