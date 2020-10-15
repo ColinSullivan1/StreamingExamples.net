@@ -157,6 +157,7 @@ namespace StanClientResourceTest
                         Log("System Resources:");
                         Log("   Working set  : {0} bytes", Proc.WorkingSet64);
                         Log("   Paged Memory : {0} bytes", Proc.PagedMemorySize64);
+                        Log("   GC Memory    : {0} bytes", GC.GetTotalMemory(false));
                         Log("   CPU Time     : {0} sec", Proc.TotalProcessorTime.TotalSeconds);
                         Log("   CPU Percent  : {0:0.0} %", CpuPercentage * 10);
                     }
