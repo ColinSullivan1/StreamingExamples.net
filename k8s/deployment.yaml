@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stan-net-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: stan-net-test
+  template:
+    metadata:
+      labels:
+        name: stan-net-test
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - stan
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: stan-net-test
+        image: csullivan9999/netstanres:latest
+        imagePullPolicy: IfNotPresent
+        args:
+        - nats://stan:4222
+        - stan
