@@ -246,7 +246,7 @@ namespace StanClientResourceTest
 
                     Thread.Sleep(1000);
 
-                    Log("Starting Publishers.");
+                    Log("Starting Publisher.");
                     Task pubTask = new Task(() => p.SendMessages(url, clusterID), TaskCreationOptions.LongRunning);
                     pubTask.Start();
 
