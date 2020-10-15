@@ -1,0 +1,146 @@
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: stan-ssd-ft
+  annotations:
+    volume.beta.kubernetes.io/storage-class: "azurefile"
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stan-config
+  labels:
+    app: stan
+data:
+  stan.conf: |-
+    #########################
+    # NATS Streaming Config #
+    #########################
+    streaming {
+      id: stan
+      ###############################
+      #  Store Config               #
+      ###############################
+      store: "file"
+      dir: /data/stan/store
+      ft_group_name: my-group
+      sd: true
+    }
+    ###############
+    #             #
+    # Monitoring  #
+    #             #
+    ###############
+    http: 8222
+    server_name: $POD_NAME
+    
+    write_deadline: 10s
+    ###################################
+    #                                 #
+    # NATS Full Mesh Clustering Setup #
+    #                                 #
+    ###################################
+    cluster {
+      port: 6222
+    
+      routes = [
+        nats://stan-0.stan.default.svc:6222,nats://stan-1.stan.default.svc:6222,
+      ]
+      cluster_advertise: $CLUSTER_ADVERTISE
+    
+      connect_retries: 30
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: stan
+  name: stan
+  namespace: default
+spec:
+  clusterIP: None
+  ports:
+  - name: client
+    port: 4222
+    protocol: TCP
+    targetPort: 4222
+  - name: route
+    port: 6222
+    protocol: TCP
+    targetPort: 6222
+  - name: monitor
+    port: 8222
+    protocol: TCP
+    targetPort: 8222
+  selector:
+    app: stan
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  labels:
+    app: stan
+  name: stan
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stan
+  serviceName: stan
+  template:
+    metadata:
+      labels:
+        app: stan
+    spec:
+      containers:
+      - args:
+        - -sc
+        - /etc/stan-config/stan.conf
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        - name: CLUSTER_ADVERTISE
+          value: $(POD_NAME).stan.$(POD_NAMESPACE).svc
+        - name: STAN_SERVICE_NAME
+          value: stan
+        image: nats-streaming:0.17.0
+        imagePullPolicy: IfNotPresent
+        name: stan
+        ports:
+        - containerPort: 8222
+          name: monitor
+          protocol: TCP
+        - containerPort: 4222
+          name: client
+          protocol: TCP
+        volumeMounts:
+        - mountPath: /etc/stan-config
+          name: config-volume
+        - mountPath: /data/stan
+          name: stan-pvc
+      volumes:
+      - configMap:
+          name: stan-config
+        name: config-volume
+      - name: stan-pvc
+        persistentVolumeClaim:
+          claimName: stan-ssd-ft
